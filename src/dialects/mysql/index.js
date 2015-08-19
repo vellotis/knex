@@ -1,19 +1,21 @@
 
 // MySQL Client
 // -------
-var inherits       = require('inherits')
-var assign         = require('lodash/object/assign')
+var inherits        = require('inherits')
+var assign          = require('lodash/object/assign')
 
-var Client         = require('../../client')
-var Promise        = require('../../promise')
-var helpers        = require('../../helpers')
+var Client          = require('../../client')
+var Promise         = require('../../promise')
+var helpers         = require('../../helpers')
+var errors          = require('../../errors')
 
-var Transaction    = require('./transaction')
-var QueryCompiler  = require('./query/compiler')
-var SchemaCompiler = require('./schema/compiler')
-var TableCompiler  = require('./schema/tablecompiler')
-var ColumnCompiler = require('./schema/columncompiler')
-var pluck          = require('lodash/collection/pluck')
+var Transaction     = require('./transaction')
+var errorPredicates = require('./errors')
+var QueryCompiler   = require('./query/compiler')
+var SchemaCompiler  = require('./schema/compiler')
+var TableCompiler   = require('./schema/tablecompiler')
+var ColumnCompiler  = require('./schema/columncompiler')
+var pluck           = require('lodash/collection/pluck')
 
 // Always initialize with the "QueryBuilder" and "QueryCompiler"
 // objects, which extend the base 'lib/query/builder' and
@@ -82,13 +84,18 @@ assign(Client_MySQL.prototype, {
   // Runs the query on the specified connection, providing the bindings
   // and any other necessary prep work.
   _query: function(connection, obj) {
+    var client = this
     if (!obj || typeof obj === 'string') obj = {sql: obj}
     return new Promise(function(resolver, rejecter) {
       var sql = obj.sql
       if (!sql) return resolver()
       if (obj.options) sql = assign({sql: sql}, obj.options)
       connection.query(sql, obj.bindings, function(err, rows, fields) {
-        if (err) return rejecter(err)
+        if (err) {
+          err = client._convertError(err)
+          err = new errors.QueryError('', err, {sql: sql.sql, bindings: obj.bindings})
+          return rejecter(err)
+        }
         obj.response = [rows, fields]
         resolver(obj)
       })
@@ -119,7 +126,20 @@ assign(Client_MySQL.prototype, {
       default:
         return response
     }
-  }  
+  },
+
+  _convertError: function convertError(err, callback) {
+    if (errorPredicates.ConnectionError(err)) {
+      err = new errors.ConnectionError('Could not connect to the database', err)
+    } else if (errorPredicates.MysqlProtocolError(err) || errorPredicates.NetworkError(err)) {
+      err = new errors.ConnectionError('Database connection dropped', err)
+    }
+
+    if (typeof callback === 'function') {
+      return callback(err)
+    }
+    return err
+  }
 
 })
 

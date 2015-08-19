@@ -7,6 +7,7 @@ var Seeder         = require('../seed')
 var FunctionHelper = require('../functionhelper')
 var QueryInterface = require('../query/methods')
 var helpers        = require('../helpers')
+var errors         = require('../errors')
 
 module.exports = function makeKnex(client) {
 
@@ -68,6 +69,8 @@ module.exports = function makeKnex(client) {
       return builder[method].apply(builder, arguments)
     }
   })
+
+  knex.errors = errors
   
   knex.client = client
 
