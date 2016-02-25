@@ -8,6 +8,8 @@ var FunctionHelper = require('../functionhelper')
 var QueryInterface = require('../query/methods')
 var helpers        = require('../helpers')
 var errors         = require('../errors')
+var Promise        = require('../promise')
+var _              = require('lodash')
 
 module.exports = function makeKnex(client) {
 
@@ -21,7 +23,7 @@ module.exports = function makeKnex(client) {
   }
 
   assign(knex, {
-    
+
     Promise: require('../promise'),
 
     // A new query builder instance
@@ -31,6 +33,24 @@ module.exports = function makeKnex(client) {
 
     raw: function() {
       return client.raw.apply(client, arguments)
+    },
+
+    batchInsert: function(table, batch, chunkSize = 1000) {
+      if (!_.isNumber(chunkSize) || chunkSize < 1) {
+        throw new TypeError("Invalid chunkSize: " + chunkSize);
+      }
+
+      return this.transaction((tr) => {
+
+          //Avoid unnecessary call
+          if(chunkSize !== 1) {
+            batch = _.chunk(batch, chunkSize)
+          }
+
+          return Promise.all(batch.map((items) => {
+            return tr(table).insert(items)
+          }));
+        })
     },
 
     // Runs a new transaction, taking a container and returning a promise
@@ -53,7 +73,7 @@ module.exports = function makeKnex(client) {
 
   // The `__knex__` is used if you need to duck-type check whether this
   // is a knex builder, without a full on `instanceof` check.
-  knex.VERSION = knex.__knex__  = '0.8.6'
+  knex.VERSION = knex.__knex__  = '0.10.0'
 
   // Hook up the "knex" object as an EventEmitter.
   var ee = new EventEmitter()
@@ -106,9 +126,13 @@ module.exports = function makeKnex(client) {
   client.on('start', function(obj) {
     knex.emit('start', obj)
   })
-  
+
   client.on('query', function(obj) {
     knex.emit('query', obj)
+  })
+
+  client.on('query-error', function(err, obj) {
+    knex.emit('query-error', err, obj)
   })
 
   client.makeKnex = function(client) {
