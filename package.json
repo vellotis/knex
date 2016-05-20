@@ -98,6 +98,7 @@
     "src/*",
     "lib/*",
     "build/*",
+    "scripts/*",
     "knex.js",
     "LICENSE"
   ],
